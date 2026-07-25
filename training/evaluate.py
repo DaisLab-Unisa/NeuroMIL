@@ -63,7 +63,10 @@ def evaluate_checkpoint(
     ids = manifest["record_id"].tolist()
     class_names = processor.class_names
 
-    ckpt_raw = torch.load(checkpoint_path, map_location="cpu")
+    # weights_only=False: same trusted, locally-produced checkpoints as
+    # utils.checkpoint (see save_checkpoint), which embed RNG state that
+    # PyTorch's default weights_only=True (since 2.6) refuses to unpickle.
+    ckpt_raw = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     ckpt_class_names = ckpt_raw.get("extra", {}).get("class_names", class_names)
 
     model = PainMILModel(config, num_classes=len(ckpt_class_names)).to(device)
@@ -74,7 +77,7 @@ def evaluate_checkpoint(
     loader = DataLoader(ds, batch_size=config["training"]["batch_size"], shuffle=False,
                          collate_fn=mil_collate_fn)
 
-    all_true, all_pred, all_proba, all_ids, all_attn, all_masks = [], [], [], [], [], []
+    all_true, all_pred, all_proba, all_ids, all_attn = [], [], [], [], []
 
     for batch in loader:
         record_ids_batch = batch["record_id"]
@@ -87,8 +90,16 @@ def evaluate_checkpoint(
         all_pred.extend(pred.tolist())
         all_proba.append(proba)
         all_ids.extend(record_ids_batch)
-        all_attn.append(attn.cpu().numpy())
-        all_masks.append(batch["mask"].numpy())
+
+        # Trim each sample to its real (unpadded) clip count right away --
+        # bags have variable length, and mil_collate_fn pads to the max
+        # clip count *within each batch*, so different batches can produce
+        # different padded widths; keeping a ragged per-patient list avoids
+        # concatenating arrays whose padded axis doesn't match across batches.
+        attn_np = attn.cpu().numpy()
+        mask_np = batch["mask"].numpy()
+        for i in range(attn_np.shape[0]):
+            all_attn.append(attn_np[i, mask_np[i]])
 
     y_true = np.array(all_true)
     y_pred = np.array(all_pred)
@@ -126,19 +137,17 @@ def evaluate_checkpoint(
         plot_training_curves(history, str(plots_dir / "training_curves.png"))
 
     # ---- per-patient attention timelines ----
-    attn_concat = np.concatenate(all_attn, axis=0)
-    mask_concat = np.concatenate(all_masks, axis=0)
     for i, rid in enumerate(all_ids):
         meta_path = Path(features_dir) / str(rid) / "meta.json"
         if not meta_path.exists():
             continue
         with open(meta_path) as f:
             meta = json.load(f)
-        n = mask_concat[i].sum()
+        n = len(all_attn[i])
         plot_attention_timeline(
             record_id=rid,
             clip_windows=meta["clip_windows"][:n],
-            attn_weights=attn_concat[i][:n],
+            attn_weights=all_attn[i],
             out_path=str(plots_dir / "attention" / f"patient_{rid}.png"),
             true_label=ckpt_class_names[y_true[i]],
             pred_label=ckpt_class_names[y_pred[i]],

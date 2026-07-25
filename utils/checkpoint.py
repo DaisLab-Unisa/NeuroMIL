@@ -39,9 +39,12 @@ def get_rng_state() -> Dict[str, Any]:
 def set_rng_state(state: Dict[str, Any]):
     random.setstate(state["python"])
     np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch"])
+    # RNG state tensors must stay on CPU regardless of the checkpoint's
+    # map_location: torch.load(..., map_location="cuda") also remaps these,
+    # but torch.set_rng_state()/cuda.set_rng_state_all() require CPU tensors.
+    torch.set_rng_state(state["torch"].cpu())
     if torch.cuda.is_available() and "cuda" in state:
-        torch.cuda.set_rng_state_all(state["cuda"])
+        torch.cuda.set_rng_state_all([s.cpu() for s in state["cuda"]])
 
 
 def save_checkpoint(
@@ -74,7 +77,7 @@ def load_checkpoint(
     map_location: str = "cpu",
     restore_rng: bool = True,
 ) -> Dict[str, Any]:
-    ckpt = torch.load(path, map_location=map_location)
+    ckpt = torch.load(path, map_location=map_location, weights_only=False)
     model.load_state_dict(ckpt["model_state_dict"])
     if optimizer is not None and ckpt.get("optimizer_state_dict"):
         optimizer.load_state_dict(ckpt["optimizer_state_dict"])

@@ -61,6 +61,26 @@ def build_cfg(combo: tuple, protocol: str) -> dict:
     return cfg
 
 
+def _reduce_fold_metrics(fold_metrics: list, protocol: str) -> dict:
+    """Reduce a protocol run down to the summary record persisted per
+    combo under results/<run_name>/fold_metrics.json: just the METRIC_KEYS
+    (dropping history, confusion_matrix, class_names, per-class breakdowns,
+    and auroc, which are training/evaluation-time detail, not the
+    cross-combo comparison surface) plus enough to identify the run --
+    the single fixed-split fold/sample-count, or the fold count for CV.
+    """
+    if protocol == "80_20":
+        raw = fold_metrics[0]
+        record = {k: raw[k] for k in METRIC_KEYS}
+        record["fold"] = raw["fold"]
+        record["n_samples"] = raw["n_samples"]
+    else:
+        summary = summarize_across_folds(fold_metrics)
+        record = {k: summary[k]["mean"] for k in METRIC_KEYS}
+        record["n_folds"] = len(fold_metrics)
+    return record
+
+
 def run_protocol(protocol: str) -> pd.DataFrame:
     rows = []
     for combo in MODALITY_COMBOS:
@@ -76,7 +96,7 @@ def run_protocol(protocol: str) -> pd.DataFrame:
         results_dir = Path(cfg["paths"]["results_dir"])
         results_dir.mkdir(parents=True, exist_ok=True)
         with open(results_dir / "fold_metrics.json", "w", encoding="utf-8") as f:
-            json.dump(fold_metrics, f, indent=2, default=str)
+            json.dump([_reduce_fold_metrics(fold_metrics, protocol)], f, indent=2, default=str)
 
         summary = summarize_across_folds(fold_metrics)
         row = {"modalities": name}
