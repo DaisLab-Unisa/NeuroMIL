@@ -1,0 +1,105 @@
+# =====================================================================
+# Pain Detection Framework - Master Configuration
+# =====================================================================
+
+paths:
+  video_dir: "C:\\Users\\daisl\\Desktop\\Video ALL Ruggy"
+  clinical_csv: "C:\\Users\\daisl\\Desktop\\Pain Detection\\RUGGIStudy_DATA_2026-07-22_1301.csv"
+  features_dir: "./features/saved_embeddings"
+  checkpoint_dir: "./checkpoint"
+  results_dir: "./results"
+
+data_matching:
+  video_extensions: [".mp4", ".MOV", ".mov"]
+  id_regex: "^ID(\\d+)"
+  csv_id_column: "record_id"
+
+label:
+  source_column: "dn4_score"
+  task_type: "binary"
+  missing_value_strategy: "drop"
+  # Standard DN4 clinical cutoff: score >=4/10 suggestive of neuropathic pain.
+  classes:
+    no_neuropathic:
+      min: 0
+      max: 3
+    neuropathic:
+      min: 4
+      max: 10
+
+temporal:
+  clip_duration_sec: 10
+  clip_stride_sec: 10
+  max_clips_per_patient: 60
+  min_clips_per_patient: 3
+
+embedding:
+  backend: "jina"
+  embedding_dim: 1024
+  frames_per_clip: 8
+  device: "cuda"
+
+  jina:
+    clip_model_name: "jinaai/jina-clip-v2"
+
+  qwen3vl:
+    model_name_or_path: "Qwen/Qwen3-VL-2B-Instruct"
+    pooling: "mean_last_hidden"
+    local_only: true
+    dtype: "bfloat16"
+
+audio:
+  whisper_model: "large-v3"
+  language: "it"
+  device: "cuda"
+
+text:
+  model_name: "intfloat/multilingual-e5-large"
+
+model:
+  fusion:
+    input_dims:
+      video: 1024
+      audio: 768
+      text: 1024
+    hidden_dim: 512
+    dropout: 0.2
+
+  mil_attention:
+    hidden_dim: 256
+    attention_dim: 128
+    dropout: 0.2
+    gated: true
+
+  classifier:
+    hidden_dim: 128
+    dropout: 0.2
+
+training:
+  mode: "offline"
+  epochs: 100
+  batch_size: 4
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  optimizer: "adamw"
+  scheduler: "cosine"
+  loss: "weighted_ce"
+  focal_gamma: 2.0
+  early_stopping_patience: 15
+  early_stopping_metric: "val_macro_f1"
+  grad_clip_norm: 1.0
+  seed: 42
+
+  cross_validation:
+    n_folds: 5
+    stratified: true
+    group_by: "record_id"
+
+  joint_mode:
+    freeze_encoders: true
+    lora:
+      enabled: false
+      r: 8
+      alpha: 16
+      dropout: 0.05
+      target_modules: ["q_proj", "v_proj"]

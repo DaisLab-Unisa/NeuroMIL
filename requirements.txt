@@ -1,0 +1,55 @@
+# =====================================================================
+# Core ML stack
+# =====================================================================
+torch>=2.2.0
+transformers>=4.46.0
+accelerate
+
+# =====================================================================
+# Trust_remote_code model dependencies
+# (jina-clip-v2's remote modeling code imports these even though this
+#  repo never imports them directly)
+# =====================================================================
+timm
+einops
+torchvision
+
+# =====================================================================
+# Text encoder (Multilingual-E5-Large is XLM-RoBERTa based)
+# =====================================================================
+sentencepiece
+
+# =====================================================================
+# Audio / ASR (Whisper large-v3: ASR transcription via faster-whisper,
+# dense acoustic embeddings via transformers' WhisperModel encoder)
+# =====================================================================
+faster-whisper
+soundfile
+
+# =====================================================================
+# Video / image
+# =====================================================================
+opencv-python
+Pillow
+
+# =====================================================================
+# Data / training / evaluation
+# =====================================================================
+pandas
+numpy
+scikit-learn
+pyyaml
+tqdm
+
+# =====================================================================
+# Plotting
+# =====================================================================
+matplotlib
+seaborn
+
+# =====================================================================
+# System (NOT pip-installable -- must be on PATH separately)
+# =====================================================================
+# ffmpeg, ffprobe  -> required by datasets/ruggi_dataset.py and
+#                     embeddings/extraction_pipeline.py for audio
+#                     extraction / duration probing.
